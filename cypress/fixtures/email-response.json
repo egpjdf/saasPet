@@ -1,0 +1,20 @@
+{
+  "data": {
+    "provider": "smtp",
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_username": "user@example.com",
+    "smtp_password": null,
+    "smtp_encryption": "tls",
+    "from_email": "novo@email.com",
+    "from_name": "Example Corp",
+    "reply_to_email": "support@example.com",
+    "resend_api_key": null,
+    "sendgrid_api_key": null,
+    "mailgun_domain": null,
+    "mailgun_api_key": null,
+    "test_email_sent_at": "2024-01-01T12:00:00.000Z",
+    "test_email_status": "success",
+    "test_email_error": null
+  }
+}

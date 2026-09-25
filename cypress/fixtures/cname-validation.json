@@ -1,0 +1,8 @@
+{
+  "data": {
+    "status": "valid",
+    "message": "CNAME configurado corretamente",
+    "expected_value": "verify.saaspet.com",
+    "actual_value": "verify.saaspet.com"
+  }
+}

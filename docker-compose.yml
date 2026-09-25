@@ -1,0 +1,230 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 16 com pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: saaspet-postgres
+    environment:
+      POSTGRES_DB: saaspet
+      POSTGRES_USER: saaspet
+      POSTGRES_PASSWORD: saaspet
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/rls_policies.sql:/docker-entrypoint-initdb.d/99-rls_policies.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saaspet -d saaspet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saaspet-network
+
+  # Redis 7 (Valkey)
+  redis:
+    image: valkey/valkey:7-alpine
+    container_name: saaspet-redis
+    command: valkey-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saaspet-network
+
+  # Redis for Pulse (separate DB)
+  redis-pulse:
+    image: valkey/valkey:7-alpine
+    container_name: saaspet-redis-pulse
+    command: valkey-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_pulse_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saaspet-network
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: saaspet-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: saaspet
+      MINIO_ROOT_PASSWORD: saaspet123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - saaspet-network
+
+  # Laravel Pulse (Observability - Dev)
+  pulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: pulse
+    container_name: saaspet-pulse
+    environment:
+      - APP_ENV=local
+      - PULSE_USE=redis
+      - PULSE_REDIS_HOST=redis-pulse
+      - PULSE_REDIS_PORT=6379
+      - PULSE_REDIS_DATABASE=0
+      - PULSE_WORKERS_ENABLED=true
+      - PULSE_WORKERS_COUNT=1
+    ports:
+      - "9000:9000"
+    depends_on:
+      redis-pulse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - saaspet-network
+
+  # Laravel Telescope (Debugging - Dev)
+  telescope:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: telescope
+    container_name: saaspet-telescope
+    environment:
+      - APP_ENV=local
+      - TELESCOPE_ENABLED=true
+      - TELESCOPE_DRIVER=database
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=saaspet
+      - DB_USERNAME=saaspet
+      - DB_PASSWORD=saaspet
+    ports:
+      - "8001:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - saaspet-network
+
+  # Laravel Reverb (WebSocket)
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile.reverb
+    container_name: saaspet-reverb
+    environment:
+      REVERB_HOST: 0.0.0.0
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    networks:
+      - saaspet-network
+
+  # Laravel Horizon (Queue monitoring)
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: horizon
+    container_name: saaspet-horizon
+    environment:
+      - APP_ENV=local
+      - QUEUE_CONNECTION=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - saaspet-network
+
+  # Laravel Scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: scheduler
+    container_name: saaspet-scheduler
+    environment:
+      - APP_ENV=local
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - saaspet-network
+
+  # Nginx + PHP-FPM (Application)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: saaspet-app
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=saaspet
+      - DB_USERNAME=saaspet
+      - DB_PASSWORD=saaspet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REVERB_HOST=reverb
+      - REVERB_PORT: 8080
+    ports:
+      - "8000:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./bootstrap/cache:/var/www/html/bootstrap/cache
+    networks:
+      - saaspet-network
+
+  # Mailhog (Email testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: saaspet-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - saaspet-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  redis_pulse_data:
+  minio_data:
+
+networks:
+  saaspet-network:
+    driver: bridge

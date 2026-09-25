@@ -1,0 +1,7 @@
+{
+  "data": {
+    "success": true,
+    "message": "E-mail de teste enviado com sucesso!",
+    "provider": "smtp"
+  }
+}

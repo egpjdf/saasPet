@@ -1,0 +1,11 @@
+{
+  "data": {
+    "logo_url": "https://example.com/logo.png",
+    "logo_dark_url": null,
+    "favicon_url": null,
+    "primary_color": "#FF0000",
+    "secondary_color": "#00FF00",
+    "accent_color": "#0000FF",
+    "custom_css": ""
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "data": {
+    "plan": "free",
+    "enabled_features": ["core_dashboard"],
+    "available_features": [
+      {
+        "key": "core_dashboard",
+        "name": "Dashboard",
+        "description": "Painel principal com métricas",
+        "enabled": true,
+        "required_plan": "free",
+        "category": "core",
+        "dependencies": []
+      },
+      {
+        "key": "communication_email",
+        "name": "E-mail Transacional",
+        "description": "Envio de e-mails automáticos",
+        "enabled": false,
+        "required_plan": "starter",
+        "category": "communication",
+        "dependencies": []
+      },
+      {
+        "key": "analytics_reports",
+        "name": "Relatórios Avançados",
+        "description": "Relatórios detalhados e exportação",
+        "enabled": false,
+        "required_plan": "professional",
+        "category": "analytics",
+        "dependencies": ["core_dashboard"]
+      }
+    ]
+  }
+}

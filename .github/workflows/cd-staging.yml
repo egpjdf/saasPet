@@ -1,0 +1,236 @@
+name: CD Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: 'Rollback to previous deployment'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PHP_VERSION: '8.3'
+  NODE_VERSION: '20'
+  STAGING_URL: ${{ secrets.STAGING_URL }}
+  LARAVEL_CLOUD_API_TOKEN: ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.build-image.outputs.image_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_pgsql, pgsql, redis, bcmath, pcntl
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Laravel Pint
+        run: ./vendor/bin/pint --test
+
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse --level=5 --memory-limit=512M
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Build Docker image
+        id: build-image
+        run: |
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/saaspet:staging-${{ github.sha }}"
+          docker build -t "$IMAGE_TAG" -f Dockerfile .
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Push Docker image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ${{ steps.build-image.outputs.image_tag }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Laravel Cloud
+        if: env.LARAVEL_CLOUD_API_TOKEN != ''
+        run: |
+          curl -X POST "https://api.laravel.cloud/v1/projects/${{ secrets.LARAVEL_CLOUD_PROJECT_ID }}/deployments" \
+            -H "Authorization: Bearer ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "branch": "develop",
+              "environment": "staging",
+              "image": "${{ needs.build.outputs.image_tag }}",
+              "variables": {
+                "APP_ENV": "staging",
+                "APP_DEBUG": "true",
+                "DB_CONNECTION": "pgsql",
+                "CACHE_DRIVER": "redis",
+                "SESSION_DRIVER": "redis",
+                "QUEUE_CONNECTION": "redis"
+              }
+            }'
+
+      - name: Deploy to Forge (alternative)
+        if: env.LARAVEL_CLOUD_API_TOKEN == '' && secrets.FORGE_API_TOKEN != ''
+        uses: laravel/forge-action@v1
+        with:
+          api-token: ${{ secrets.FORGE_API_TOKEN }}
+          server: ${{ secrets.FORGE_STAGING_SERVER_ID }}
+          site: ${{ secrets.FORGE_STAGING_SITE_ID }}
+          script: |
+            cd /home/forge/saaspet-staging
+            git pull origin develop
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo systemctl reload php8.3-fpm
+
+      - name: Deploy to Vapor (alternative)
+        if: env.LARAVEL_CLOUD_API_TOKEN == '' && secrets.FORGE_API_TOKEN == '' && secrets.VAPOR_API_TOKEN != ''
+        run: |
+          vapor deploy staging --commit=${{ github.sha }} --wait
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          for i in {1..10}; do
+            if curl -sf "${{ env.STAGING_URL }}/health" > /dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for health check... ($i/10)"
+            sleep 10
+          done
+          echo "Health check failed"
+          exit 1
+
+      - name: Critical path - Auth
+        run: |
+          # Test login page loads
+          curl -sf "${{ env.STAGING_URL }}/login" | grep -q "Login"
+          
+          # Test tenant resolution
+          curl -sf "${{ env.STAGING_URL }}/org-a/ws-a1/login" | grep -q "Login"
+
+      - name: Critical path - Tenant Resolution
+        run: |
+          # Test organization context middleware
+          response=$(curl -s -w "%{http_code}" -o /dev/null "${{ env.STAGING_URL }}/org-a/ws-a1/dashboard")
+          if [ "$response" != "302" ] && [ "$response" != "200" ]; then
+            echo "Tenant resolution failed: $response"
+            exit 1
+          fi
+
+      - name: Critical path - Billing Webhook
+        run: |
+          # Test webhook endpoint accessible
+          curl -sf -X POST "${{ env.STAGING_URL }}/api/webhooks/stripe" \
+            -H "Content-Type: application/json" \
+            -d '{"type": "ping"}' | grep -q "received"
+
+      - name: Critical path - Notification Send
+        run: |
+          # Test notification endpoint
+          curl -sf -X POST "${{ env.STAGING_URL }}/api/notifications/test" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.STAGING_TEST_TOKEN }}" \
+            -d '{"channel": "email", "to": "test@example.com"}' | grep -q "queued"
+
+      - name: Critical path - Realtime
+        run: |
+          # Test Reverb connection
+          curl -sf "${{ env.STAGING_URL }}/reverb/health" | grep -q "ok"
+
+  rollback:
+    name: Rollback on Failure
+    needs: [deploy-staging, smoke-tests]
+    if: failure() || inputs.rollback == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback to previous deployment
+        run: |
+          echo "Rolling back staging deployment..."
+          
+          # Laravel Cloud rollback
+          if [ "${{ env.LARAVEL_CLOUD_API_TOKEN }}" != "" ]; then
+            curl -X POST "https://api.laravel.cloud/v1/projects/${{ secrets.LARAVEL_CLOUD_PROJECT_ID }}/deployments/rollback" \
+              -H "Authorization: Bearer ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}"
+          fi
+          
+          # Forge rollback
+          if [ "${{ secrets.FORGE_API_TOKEN }}" != "" ]; then
+            curl -X POST "https://forge.laravel.com/api/v1/servers/${{ secrets.FORGE_STAGING_SERVER_ID }}/sites/${{ secrets.FORGE_STAGING_SITE_ID }}/deploy" \
+              -H "Authorization: Bearer ${{ secrets.FORGE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"commit": "previous"}'
+          fi
+          
+          # Vapor rollback
+          if [ "${{ secrets.VAPOR_API_TOKEN }}" != "" ]; then
+            vapor rollback staging
+          fi
+
+      - name: Notify team
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "⚠️ Staging deployment failed, rollback initiated"}'
+
+  notify:
+    name: Notify Success
+    needs: [smoke-tests]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify team
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "✅ Staging deployment successful: ${{ github.repository }}@${{ github.sha }}"}'

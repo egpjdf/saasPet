@@ -1,0 +1,252 @@
+{
+  "settings": {
+    "title": "Configurações da Organização",
+    "breadcrumb": "Configurações",
+    "tabs": {
+      "branding": "Identidade Visual",
+      "domain": "Domínio",
+      "localization": "Localização",
+      "features": "Funcionalidades",
+      "email": "E-mail"
+    },
+    "branding": {
+      "title": "Identidade Visual",
+      "description": "Personalize a aparência da sua organização",
+      "logo": {
+        "title": "Logotipo",
+        "light": "Logo (Modo Claro)",
+        "dark": "Logo (Modo Escuro)",
+        "favicon": "Favicon",
+        "upload": "Escolher arquivo",
+        "uploading": "Enviando...",
+        "remove": "Remover",
+        "preview_alt": "Pré-visualização da logo",
+        "formats": "PNG, JPG, SVG, WebP (máx. 2MB)",
+        "favicon_formats": "PNG, ICO, SVG (máx. 512KB)"
+      },
+      "colors": {
+        "title": "Cores da Marca",
+        "primary": "Cor Primária",
+        "secondary": "Cor Secundária",
+        "accent": "Cor de Destaque",
+        "primary_desc": "Usada em botões primários, links e elementos de destaque",
+        "secondary_desc": "Usada em elementos de apoio, bordas e textos secundários",
+        "accent_desc": "Usada em badges, notificações e elementos de chamada",
+        "preview": "Pré-visualização",
+        "primary_button": "Botão Primário",
+        "secondary_button": "Botão Secundário",
+        "accent_badge": "Badge Destaque",
+        "primary_link": "Link primário"
+      },
+      "css": {
+        "title": "CSS Personalizado (Avançado)",
+        "description": "Adicione CSS personalizado para sobrescrever estilos padrão. Use com cautela.",
+        "placeholder": "/* Exemplo: */\n.btn-primary { border-radius: 8px; }\n.card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }"
+      },
+      "save": "Salvar Alterações",
+      "saving": "Salvando...",
+      "success": "Identidade visual salva com sucesso",
+      "logo_removed": "Logo removida com sucesso",
+      "logo_dark_removed": "Logo (modo escuro) removida com sucesso",
+      "favicon_removed": "Favicon removido com sucesso"
+    },
+    "domain": {
+      "title": "Domínio Personalizado",
+      "description": "Configure um domínio próprio para sua organização",
+      "custom_domain": "Domínio Personalizado",
+      "placeholder": "ex: app.minhaempresa.com",
+      "help": "Use apenas subdomínios (ex: app.seudominio.com). Não use domínio raiz.",
+      "use_custom_domain": "Usar domínio personalizado (requer CNAME válido e SSL ativo)",
+      "cname": {
+        "title": "Verificação CNAME",
+        "status": "Status do CNAME",
+        "status_desc": "Verifica se o DNS está configurado corretamente",
+        "verify_button": "Verificar CNAME",
+        "verifying": "Verificando...",
+        "valid": "Válido",
+        "invalid": "Inválido",
+        "pending": "Verificando...",
+        "not_configured": "Não configurado",
+        "last_checked": "Última verificação",
+        "instructions": "Configuração DNS Necessária",
+        "type": "Tipo",
+        "host": "Host/Name",
+        "value": "Valor/Target",
+        "note": "Adicione este registro CNAME no painel do seu provedor de DNS. A verificação pode levar até 48h."
+      },
+      "ssl": {
+        "title": "Status do SSL/TLS",
+        "status": "Certificado SSL",
+        "status_desc": "Status do certificado de segurança",
+        "valid": "Válido",
+        "expiring": "Expirando",
+        "expired": "Expirado",
+        "pending": "Provisionando...",
+        "not_configured": "Não configurado",
+        "expires": "Expira em",
+        "days_remaining": "dias restantes",
+        "expiring_warning": "Atenção: O certificado SSL expira em menos de 30 dias. A renovação automática será tentada.",
+        "expired_error": "Erro: O certificado SSL expirou. O domínio personalizado não funcionará até a renovação."
+      },
+      "current_domain": "Domínio Atual",
+      "active": "Ativo",
+      "save": "Salvar Configurações"
+    },
+    "localization": {
+      "title": "Localização e Formatos",
+      "description": "Configure fuso horário, idioma, moeda e formatos de data/hora",
+      "region": {
+        "title": "Região e Idioma",
+        "timezone": "Fuso Horário",
+        "timezone_desc": "Define o horário padrão para agendamentos e relatórios",
+        "locale": "Idioma",
+        "locale_desc": "Idioma da interface e mensagens do sistema"
+      },
+      "currency": {
+        "title": "Moeda",
+        "currency": "Moeda Padrão",
+        "currency_desc": "Moeda usada em valores financeiros, relatórios e faturas",
+        "preview": "Pré-visualização"
+      },
+      "formats": {
+        "title": "Formatos de Data e Hora",
+        "date_format": "Formato de Data",
+        "time_format": "Formato de Hora",
+        "first_day": "Primeiro Dia da Semana",
+        "date_options": {
+          "DD/MM/YYYY": "DD/MM/YYYY (31/12/2024)",
+          "MM/DD/YYYY": "MM/DD/YYYY (12/31/2024)",
+          "YYYY-MM-DD": "YYYY-MM-DD (2024-12-31)",
+          "DD.MM.YYYY": "DD.MM.YYYY (31.12.2024)"
+        },
+        "time_options": {
+          "24h": "24 horas (14:30)",
+          "12h": "12 horas (2:30 PM)"
+        },
+        "first_day_options": {
+          "0": "Domingo",
+          "1": "Segunda-feira",
+          "6": "Sábado"
+        },
+        "preview": "Pré-visualização",
+        "date_label": "Data",
+        "time_label": "Hora",
+        "currency_label": "Moeda"
+      },
+      "save": "Salvar Alterações",
+      "saving": "Salvando..."
+    },
+    "features": {
+      "title": "Funcionalidades da Organização",
+      "description": "Gerencie quais funcionalidades estão ativas para esta organização",
+      "plan": "Plano",
+      "upgrade_notice": "Funcionalidades por plano",
+      "upgrade_text": "Algumas funcionalidades requerem planos superiores. Ver planos ou entre em contato para upgrade.",
+      "stats": {
+        "active": "Ativas",
+        "inactive": "Inativas",
+        "with_dependencies": "Com Dependências",
+        "total": "Total"
+      },
+      "card": {
+        "active": "Ativa",
+        "inactive": "Inativa",
+        "saving": "Salvando...",
+        "requires": "Requer",
+        "enables": "Habilita",
+        "upgrade_required": "Requer plano {{plan}} ou superior"
+      },
+      "categories": {
+        "core": "Essenciais",
+        "communication": "Comunicação",
+        "analytics": "Analytics & Relatórios",
+        "integrations": "Integrações",
+        "automation": "Automação",
+        "branding": "Marca & Domínio",
+        "email": "E-mail & Notificações"
+      },
+      "plans": {
+        "free": "Gratuito",
+        "starter": "Starter",
+        "professional": "Professional",
+        "enterprise": "Enterprise"
+      }
+    },
+    "email": {
+      "title": "Configurações de E-mail",
+      "description": "Configure o provedor de e-mail para envios transacionais e notificações",
+      "providers": {
+        "smtp": "SMTP Personalizado",
+        "resend": "Resend",
+        "sendgrid": "SendGrid",
+        "mailgun": "Mailgun"
+      },
+      "smtp": {
+        "title": "Configuração SMTP",
+        "host": "Servidor SMTP",
+        "host_placeholder": "smtp.exemplo.com",
+        "port": "Porta",
+        "username": "Usuário",
+        "username_placeholder": "usuario@exemplo.com",
+        "password": "Senha",
+        "password_placeholder": "••••••••",
+        "password_note": "Deixe em branco para manter a senha atual",
+        "encryption": "Criptografia",
+        "encryption_options": {
+          "tls": "TLS (STARTTLS) - Porta 587",
+          "ssl": "SSL/TLS - Porta 465",
+          "none": "Nenhuma - Porta 25"
+        }
+      },
+      "resend": {
+        "title": "Configuração Resend",
+        "api_key": "API Key",
+        "api_key_placeholder": "re_••••••••••••••••••••••••",
+        "note": "Obtenha sua API key em resend.com/api-keys"
+      },
+      "common": {
+        "title": "Remetente Padrão",
+        "from_email": "E-mail do Remetente",
+        "from_email_placeholder": "noreply@seudominio.com",
+        "from_name": "Nome do Remetente",
+        "from_name_placeholder": "Sua Empresa",
+        "reply_to": "E-mail de Resposta",
+        "reply_to_placeholder": "suporte@seudominio.com",
+        "reply_to_note": "Opcional. Se vazio, usa o e-mail do remetente"
+      },
+      "test": {
+        "title": "Teste de E-mail",
+        "test_email": "E-mail para Teste",
+        "test_email_placeholder": "seu@email.com",
+        "send_on_save": "Enviar e-mail de teste ao salvar",
+        "send_test": "Enviar E-mail de Teste",
+        "sending": "Enviando...",
+        "success": "E-mail de teste enviado com sucesso!",
+        "error": "Erro ao enviar e-mail de teste"
+      },
+      "status": {
+        "title": "Status Atual",
+        "provider": "Provedor",
+        "last_test": "Último teste",
+        "test_status": "Status do teste",
+        "never": "Nunca",
+        "success": "Sucesso",
+        "failed": "Falhou",
+        "pending": "Pendente",
+        "not_tested": "Não testado",
+        "error": "Erro"
+      },
+      "save": "Salvar Configurações",
+      "saving": "Salvando..."
+    },
+    "common": {
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "loading": "Carregando...",
+      "error": "Erro",
+      "success": "Sucesso",
+      "required": "Obrigatório",
+      "optional": "Opcional"
+    }
+  }
+}

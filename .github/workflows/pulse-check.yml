@@ -1,0 +1,48 @@
+name: Pulse Health Check
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Every 15 minutes
+  workflow_dispatch:
+
+jobs:
+  pulse-check:
+    name: Pulse Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Pulse endpoint
+        run: |
+          if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:9000 | grep -q "200"; then
+            echo "Pulse is healthy"
+            exit 0
+          else
+            echo "Pulse health check failed"
+            exit 1
+          fi
+        env:
+          PULSE_URL: ${{ secrets.PULSE_URL }}
+
+      - name: Check Redis connectivity
+        run: |
+          redis-cli -h localhost -p 6380 ping
+
+      - name: Verify Pulse workers
+        run: |
+          # Check if pulse workers are running
+          ps aux | grep -v grep | grep "pulse:worker" || echo "No pulse workers found"
+
+  pulse-alert:
+    name: Alert on Pulse Failure
+    runs-on: ubuntu-latest
+    needs: pulse-check
+    if: failure()
+    steps:
+      - name: Send alert
+        run: |
+          echo "Pulse health check failed - alerting team"
+          # Integration with Slack, PagerDuty, etc.

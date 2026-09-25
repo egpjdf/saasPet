@@ -1,0 +1,11 @@
+{
+  "data": {
+    "custom_domain": "app.novodominio.com",
+    "cname_status": "pending",
+    "cname_checked_at": "2024-01-01T12:00:00.000Z",
+    "ssl_status": "pending",
+    "ssl_expires_at": null,
+    "use_custom_domain": true,
+    "verification_token": "verify-token-123"
+  }
+}

@@ -1,0 +1,284 @@
+name: CD Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (tag)'
+        required: true
+        type: string
+      rollback:
+        description: 'Rollback to previous version'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PHP_VERSION: '8.3'
+  NODE_VERSION: '20'
+  PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+  LARAVEL_CLOUD_API_TOKEN: ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.build-image.outputs.image_tag }}
+      version: ${{ steps.extract-version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_pgsql, pgsql, redis, bcmath, pcntl
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Laravel Pint
+        run: ./vendor/bin/pint --test
+
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse --level=5 --memory-limit=512M
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Build Docker image
+        id: build-image
+        run: |
+          VERSION="${{ steps.extract-version.outputs.version }}"
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/saaspet:${VERSION}"
+          docker build -t "$IMAGE_TAG" -f Dockerfile .
+          docker tag "$IMAGE_TAG" "ghcr.io/${{ github.repository }}/saaspet:latest"
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Push Docker image
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ${{ steps.build-image.outputs.image_tag }}
+          docker push ghcr.io/${{ github.repository }}/saaspet:latest
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.extract-version.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.extract-version.outputs.version, 'rc') || contains(steps.extract-version.outputs.version, 'beta') || contains(steps.extract-version.outputs.version, 'alpha') }}
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Laravel Cloud
+        if: env.LARAVEL_CLOUD_API_TOKEN != ''
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          curl -X POST "https://api.laravel.cloud/v1/projects/${{ secrets.LARAVEL_CLOUD_PROJECT_ID }}/deployments" \
+            -H "Authorization: Bearer ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "branch": "main",
+              "environment": "production",
+              "image": "${{ needs.build.outputs.image_tag }}",
+              "variables": {
+                "APP_ENV": "production",
+                "APP_DEBUG": "false",
+                "DB_CONNECTION": "pgsql",
+                "CACHE_DRIVER": "redis",
+                "SESSION_DRIVER": "redis",
+                "QUEUE_CONNECTION": "redis",
+                "APP_VERSION": "'$VERSION'"
+              }
+            }'
+
+      - name: Deploy to Forge (alternative)
+        if: env.LARAVEL_CLOUD_API_TOKEN == '' && secrets.FORGE_API_TOKEN != ''
+        uses: laravel/forge-action@v1
+        with:
+          api-token: ${{ secrets.FORGE_API_TOKEN }}
+          server: ${{ secrets.FORGE_PRODUCTION_SERVER_ID }}
+          site: ${{ secrets.FORGE_PRODUCTION_SITE_ID }}
+          script: |
+            cd /home/forge/saaspet
+            git fetch --tags
+            git checkout ${{ needs.build.outputs.version }}
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo systemctl reload php8.3-fpm
+
+      - name: Deploy to Vapor (alternative)
+        if: env.LARAVEL_CLOUD_API_TOKEN == '' && secrets.FORGE_API_TOKEN == '' && secrets.VAPOR_API_TOKEN != ''
+        run: |
+          vapor deploy production --commit=${{ needs.build.outputs.version }} --wait
+
+  smoke-tests:
+    name: Production Smoke Tests
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          for i in {1..15}; do
+            if curl -sf "${{ env.PRODUCTION_URL }}/health" > /dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for health check... ($i/15)"
+            sleep 10
+          done
+          echo "Health check failed"
+          exit 1
+
+      - name: Critical path - Auth
+        run: |
+          curl -sf "${{ env.PRODUCTION_URL }}/login" | grep -q "Login"
+          curl -sf "${{ env.PRODUCTION_URL }}/org-a/ws-a1/login" | grep -q "Login"
+
+      - name: Critical path - Tenant Resolution
+        run: |
+          response=$(curl -s -w "%{http_code}" -o /dev/null "${{ env.PRODUCTION_URL }}/org-a/ws-a1/dashboard")
+          if [ "$response" != "302" ] && [ "$response" != "200" ]; then
+            echo "Tenant resolution failed: $response"
+            exit 1
+          fi
+
+      - name: Critical path - Billing Webhook (Stripe)
+        run: |
+          curl -sf -X POST "${{ env.PRODUCTION_URL }}/api/webhooks/stripe" \
+            -H "Content-Type: application/json" \
+            -H "Stripe-Signature: test" \
+            -d '{"type": "ping"}' | grep -q "received"
+
+      - name: Critical path - Billing Webhook (Paddle)
+        run: |
+          curl -sf -X POST "${{ env.PRODUCTION_URL }}/api/webhooks/paddle" \
+            -H "Content-Type: application/json" \
+            -d '{"event_type": "ping"}' | grep -q "received"
+
+      - name: Critical path - Notification Send
+        run: |
+          curl -sf -X POST "${{ env.PRODUCTION_URL }}/api/notifications/test" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.PRODUCTION_TEST_TOKEN }}" \
+            -d '{"channel": "email", "to": "test@example.com"}' | grep -q "queued"
+
+      - name: Critical path - Realtime
+        run: |
+          curl -sf "${{ env.PRODUCTION_URL }}/reverb/health" | grep -q "ok"
+
+      - name: Critical path - Database Migrations
+        run: |
+          # Verify migrations ran successfully
+          curl -sf "${{ env.PRODUCTION_URL }}/health/migrations" | grep -q "up_to_date"
+
+      - name: Critical path - Queue Workers
+        run: |
+          curl -sf "${{ env.PRODUCTION_URL }}/health/queue" | grep -q "running"
+
+  rollback:
+    name: Rollback on Failure
+    needs: [deploy-production, smoke-tests]
+    if: failure() || inputs.rollback == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback to previous version
+        run: |
+          echo "Rolling back production deployment..."
+          
+          # Laravel Cloud rollback
+          if [ "${{ env.LARAVEL_CLOUD_API_TOKEN }}" != "" ]; then
+            curl -X POST "https://api.laravel.cloud/v1/projects/${{ secrets.LARAVEL_CLOUD_PROJECT_ID }}/deployments/rollback" \
+              -H "Authorization: Bearer ${{ secrets.LARAVEL_CLOUD_API_TOKEN }}"
+          fi
+          
+          # Forge rollback
+          if [ "${{ secrets.FORGE_API_TOKEN }}" != "" ]; then
+            curl -X POST "https://forge.laravel.com/api/v1/servers/${{ secrets.FORGE_PRODUCTION_SERVER_ID }}/sites/${{ secrets.FORGE_PRODUCTION_SITE_ID }}/deploy" \
+              -H "Authorization: Bearer ${{ secrets.FORGE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"commit": "previous"}'
+          fi
+          
+          # Vapor rollback
+          if [ "${{ secrets.VAPOR_API_TOKEN }}" != "" ]; then
+            vapor rollback production
+          fi
+
+      - name: Notify team - URGENT
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "🚨 PRODUCTION deployment FAILED, rollback initiated: ${{ github.repository }}@${{ needs.build.outputs.version }}"}'
+          
+          curl -X POST "${{ secrets.PAGERDUTY_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"routing_key": "${{ secrets.PAGERDUTY_KEY }}", "event_action": "trigger", "payload": {"summary": "Production deployment failed", "severity": "critical", "source": "GitHub Actions"}}'
+
+  notify:
+    name: Notify Success
+    needs: [smoke-tests]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify team
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "🎉 Production deployment successful: ${{ github.repository }}@${{ needs.build.outputs.version }}"}'
+          
+          # Update deployment tracking
+          curl -X POST "https://api.deployment-tracker.com/deployments" \
+            -H "Authorization: Bearer ${{ secrets.DEPLOYMENT_TRACKER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"version": "${{ needs.build.outputs.version }}", "environment": "production", "status": "success", "commit": "${{ github.sha }}"}'

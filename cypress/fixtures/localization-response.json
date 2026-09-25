@@ -1,0 +1,10 @@
+{
+  "data": {
+    "timezone": "America/New_York",
+    "locale": "en-US",
+    "currency": "USD",
+    "date_format": "MM/DD/YYYY",
+    "time_format": "12h",
+    "first_day_of_week": 0
+  }
+}

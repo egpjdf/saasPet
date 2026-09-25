@@ -1,0 +1,6 @@
+[
+  { "code": "BRL", "name": "Real Brasileiro", "symbol": "R$" },
+  { "code": "USD", "name": "Dólar Americano", "symbol": "$" },
+  { "code": "EUR", "name": "Euro", "symbol": "€" },
+  { "code": "GBP", "name": "Libra Esterlina", "symbol": "£" }
+]

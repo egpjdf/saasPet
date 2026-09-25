@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "9router/combo-websearch",
+  "provider": {
+    "9router": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "9Router (localhost:20128)",
+      "options": {
+        "baseURL": "http://localhost:20128/v1",
+        "apiKey": "{env:9ROUTER_API_KEY}"
+      },
+      "models": {
+        "combo-websearch": { "name": "Combo Websearch" },
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b": { "name": "Nemotron 3 Ultra (nvidia)" }
+      }
+    }
+  },
+  "subagent_depth": 10
+}

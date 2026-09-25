@@ -1,0 +1,34 @@
+{
+    "source": {
+        "directories": ["app"],
+        "excludes": [
+            "app/Http/Kernel.php",
+            "app/Console/Kernel.php",
+            "app/Exceptions/Handler.php",
+            "app/Models/*.php"
+        ]
+    },
+    "mutators": [
+        "@default",
+        "!ArrayAssignmentMutator",
+        "!AssignmentMutator"
+    ],
+    "metrics": {
+        "min-msi": 70,
+        "min-covered-msi": 70
+    },
+    "filter": {
+        "paths": [
+            "app/Models",
+            "app/Services",
+            "app/Http/Controllers",
+            "app/Policies"
+        ]
+    },
+    "threads": 4,
+    "coverage": "coverage.xml",
+    "logs": {
+        "text": "infection.log",
+        "html": "infection.html"
+    }
+}
