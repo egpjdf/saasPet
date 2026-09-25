@@ -1,5 +1,5 @@
 ---
-description: DevOps Engineer - Docker, GitHub Actions CI/CD, secrets management, Laravel Cloud/Forge/Vapor, observability (Pulse, Telescope, Sentry), zero-downtime deploy.
+description: DevOps Engineer - Docker, GitHub Actions CI/CD, secrets management, Laravel Cloud/Forge/Vapor, observability (Pulse, Telescope, Sentry), zero-downtime deploy
 mode: subagent
 model: 9router/combo-websearch
 temperature: 0.2
@@ -35,7 +35,6 @@ Você é o **DevOps Engineer Sênior** especializado em **Laravel 13 + Docker + 
 version: '3.8'
 
 services:
-  # PostgreSQL 16 com pgvector + uuid-ossp
   postgres:
     image: pgvector/pgvector:pg16
     container_name: saaspet-postgres
@@ -56,7 +55,6 @@ services:
     networks:
       - saaspet-network
 
-  # Redis 7 (Valkey)
   redis:
     image: valkey/valkey:7-alpine
     container_name: saaspet-redis
@@ -73,7 +71,6 @@ services:
     networks:
       - saaspet-network
 
-  # MinIO (S3-compatible storage)
   minio:
     image: minio/minio:latest
     container_name: saaspet-minio
@@ -94,7 +91,6 @@ services:
     networks:
       - saaspet-network
 
-  # Laravel Reverb (WebSockets)
   reverb:
     build:
       context: .
@@ -111,7 +107,6 @@ services:
     networks:
       - saaspet-network
 
-  # Laravel Octane (FrankenPHP/Swoole) - opcional para local
   octane:
     build:
       context: .
@@ -132,7 +127,6 @@ services:
     networks:
       - saaspet-network
 
-  # Nginx (reverse proxy para local)
   nginx:
     image: nginx:alpine
     container_name: saaspet-nginx
@@ -158,111 +152,6 @@ networks:
     driver: bridge
 ```
 
-#### `docker/postgres/init-extensions.sql`
-```sql
--- Extensões obrigatórias
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- Configurações de performance
-ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';
-ALTER SYSTEM SET pg_stat_statements.track = 'all';
-ALTER SYSTEM SET pg_stat_statements.max = 10000;
-```
-
-#### `Dockerfile` (Multi-stage Production)
-```dockerfile
-# Base image
-FROM php:8.3-fpm-alpine AS base
-
-# Install system dependencies
-RUN apk add --no-cache \
-    nginx \
-    supervisor \
-    linux-headers \
-    $PHPIZE_DEPS \
-    postgresql-dev \
-    redis-dev \
-    icu-dev \
-    libzip-dev \
-    oniguruma-dev \
-    freetype-dev \
-    libjpeg-turbo-dev \
-    libpng-dev \
-    nodejs \
-    npm
-
-# PHP Extensions
-RUN docker-php-ext-install -j$(nproc) \
-    pdo_pgsql \
-    pgsql \
-    redis \
-    intl \
-    zip \
-    bcmath \
-    opcache \
-    gd
-
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Node
-RUN npm install -g pnpm
-
-# ----------------------------------------
-# Build Stage
-# ----------------------------------------
-FROM base AS builder
-
-WORKDIR /var/www/html
-
-# Copy composer files first (cache layer)
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --prefer-dist --no-scripts --no-autoloader
-
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy source
-COPY . .
-
-# Run composer scripts & autoloader
-RUN composer dump-autoload --optimize --classmap-authoritative
-
-# Build frontend
-RUN pnpm run build
-
-# ----------------------------------------
-# Production Stage
-# ----------------------------------------
-FROM base AS production
-
-WORKDIR /var/www/html
-
-# Copy from builder
-COPY --from=builder /var/www/html /var/www/html
-
-# Copy config files
-COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY docker/nginx/conf.d /etc/nginx/conf.d
-
-# Permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost/up || exit 1
-
-EXPOSE 80 443
-
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-```
-
 ### 2. GitHub Actions - CI/CD Pipeline
 
 #### `.github/workflows/ci.yml`
@@ -280,9 +169,6 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  # ========================================
-  # STATIC ANALYSIS & CODE STYLE
-  # ========================================
   static-analysis:
     name: Static Analysis (PHPStan + Pint)
     runs-on: ubuntu-latest
@@ -314,9 +200,6 @@ jobs:
       - name: PHPStan Level 5
         run: vendor/bin/phpstan analyse --level=5 --error-format=github
 
-  # ========================================
-  # UNIT & FEATURE TESTS
-  # ========================================
   unit-tests:
     name: Unit & Feature Tests (Pest)
     runs-on: ubuntu-latest
@@ -380,9 +263,6 @@ jobs:
           path: storage/coverage/
           retention-days: 7
 
-  # ========================================
-  # MUTATION TESTING
-  # ========================================
   mutation-tests:
     name: Mutation Testing (Infection)
     runs-on: ubuntu-latest
@@ -437,9 +317,6 @@ jobs:
           name: infection-log
           path: storage/infection/
 
-  # ========================================
-  # BROWSER TESTS (DUSK)
-  # ========================================
   browser-tests:
     name: Browser Tests (Dusk)
     runs-on: ubuntu-latest
@@ -515,9 +392,6 @@ jobs:
             tests/Browser/console/
           retention-days: 7
 
-  # ========================================
-  # TENANT ISOLATION TESTS
-  # ========================================
   tenant-isolation:
     name: Tenant Isolation Tests
     runs-on: ubuntu-latest
@@ -564,9 +438,6 @@ jobs:
       - name: Run Tenant Isolation Tests
         run: vendor/bin/pest tests/Feature/TenantIsolation --stop-on-failure --parallel
 
-  # ========================================
-  # SECURITY SCAN
-  # ========================================
   security-scan:
     name: Security Scan (Secrets + Dependencies)
     runs-on: ubuntu-latest
@@ -575,7 +446,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for secret scan
+          fetch-depth: 0
 
       - name: Secret Scanner
         uses: trufflesecurity/trufflehog@v3
@@ -597,9 +468,6 @@ jobs:
         uses: actions/dependency-review-action@v4
         if: github.event_name == 'pull_request'
 
-  # ========================================
-  # BUILD DOCKER IMAGE (Test)
-  # ========================================
   docker-build:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -624,6 +492,8 @@ jobs:
           cache-to: type=gha,mode=max
 ```
 
+### 3. GitHub Actions - CD Staging
+
 #### `.github/workflows/cd-staging.yml`
 ```yaml
 name: Deploy Staging
@@ -641,24 +511,17 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: ci  # Requer CI passing
+    needs: ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Deploy para Laravel Cloud / Forge / Vapor
-      # Exemplo Laravel Cloud:
       - name: Deploy to Laravel Cloud
         uses: laravel/cloud-action@v1
         with:
           environment: staging
           token: ${{ secrets.LARAVEL_CLOUD_TOKEN }}
 
-      # Ou Forge:
-      # - name: Deploy via Forge
-      #   run: curl -X POST "${{ secrets.FORGE_DEPLOY_WEBHOOK }}"
-
-      # Smoke tests pós-deploy
       - name: Smoke Tests
         run: |
           sleep 30
@@ -666,13 +529,15 @@ jobs:
           curl -f https://staging.saaspet.com/api/health || exit 1
 ```
 
+### 4. GitHub Actions - CD Production
+
 #### `.github/workflows/cd-production.yml`
 ```yaml
 name: Deploy Production
 
 on:
   push:
-    tags: ['v*']  # Apenas tags de versão
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
@@ -721,14 +586,12 @@ jobs:
           generate_release_notes: true
 ```
 
-### 3. Secrets Management
+### 5. Secrets Management
 
 #### 1Password CLI Integration
 ```bash
 # .github/scripts/load-secrets.sh
 #!/bin/bash
-# Carrega secrets do 1Password para GitHub Actions
-
 op inject -i .env.1password -o .env
 ```
 
@@ -740,17 +603,9 @@ return [
     'token' => env('VAULT_TOKEN'),
     'secrets_path' => 'secret/data/saaspet/${environment}',
 ];
-
-// Uso no bootstrap/app.php ou service provider
-$secrets = Vault::getSecrets();
-foreach ($secrets as $key => $value) {
-    putenv("$key=$value");
-    $_ENV[$key] = $value;
-    $_SERVER[$key] = $value;
-}
 ```
 
-### 4. Observabilidade
+### 6. Observabilidade
 
 #### Laravel Pulse (config/pulse.php)
 ```php
@@ -762,10 +617,10 @@ return [
     ],
     'recorders' => [
         \Laravel\Pulse\Recorders\RecordSlowQueries::class => [
-            'threshold' => 100, // ms
+            'threshold' => 100,
         ],
         \Laravel\Pulse\Recorders\RecordSlowJobs::class => [
-            'threshold' => 500, // ms
+            'threshold' => 500,
         ],
         \Laravel\Pulse\Recorders\RecordCacheHits::class,
         \Laravel\Pulse\Recorders\RecordFailedJobs::class,
@@ -785,35 +640,12 @@ return [
     'attach_stacktrace' => true,
     'send_default_pii' => false,
     'before_send' => function ($event) {
-        // Scrub tenant IDs de logs sensíveis
         return $event;
     },
 ];
 ```
 
-#### Health Check Endpoint
-```php
-// routes/api.php
-Route::get('/health', function () {
-    $checks = [
-        'database' => DB::connection()->getPdo() ? 'ok' : 'fail',
-        'redis' => Redis::ping() === 'PONG' ? 'ok' : 'fail',
-        'reverb' => Http::get(config('reverb.url').'/health')->successful() ? 'ok' : 'fail',
-        'minio' => Storage::disk('s3')->exists('healthcheck') ? 'ok' : 'fail',
-    ];
-    
-    $status = array_values($checks) === array_values(array_filter($checks, fn($v) => $v === 'ok')) ? 200 : 503;
-    
-    return response()->json([
-        'status' => $status === 200 ? 'healthy' : 'unhealthy',
-        'checks' => $checks,
-        'timestamp' => now()->toISOString(),
-        'version' => app()->version(),
-    ], $status);
-})->name('health');
-```
-
-### 5. Zero-Downtime Deploy Checklist
+### 7. Zero-Downtime Deploy Checklist
 - [ ] Migrations backward-compatible (add columns, not remove)
 - [ ] `php artisan migrate --force` antes do switch de tráfego
 - [ ] Cache warming: `php artisan config:cache && php artisan route:cache && php artisan view:cache`
@@ -823,9 +655,9 @@ Route::get('/health', function () {
 - [ ] Rollback plan testado (database + code)
 
 ## Referências de Arquitetura
-- `docs/architecture/multi-tenancy.md` - Contexto de tenant nos containers
-- `docs/architecture/coding-standards.md` - Configurações de ambiente
-- `docs/scrum/dod.md` - Definition of Done (deploy gates)
+- `docs/architecture/multi-tenancy.md`
+- `docs/architecture/coding-standards.md`
+- `docs/scrum/dod.md`
 
 ## Output Esperado
 - Docker images versionadas, multi-arch (amd64/arm64)

@@ -1,0 +1,8 @@
+{
+  "wait_timer": 5,
+  "reviewers": [{"type": "User", "id": 20228276}],
+  "deployment_branch_policy": {
+    "protected_branches": true,
+    "custom_branch_policies": false
+  }
+}

@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "9router/combo-websearch",
+  "model": "9router/bzl/claude-sonnet-4.6",
   "provider": {
     "9router": {
       "npm": "@ai-sdk/openai-compatible",
@@ -11,7 +11,8 @@
       },
       "models": {
         "combo-websearch": { "name": "Combo Websearch" },
-        "nvidia/nvidia/nemotron-3-ultra-550b-a55b": { "name": "Nemotron 3 Ultra (nvidia)" }
+        "cx/gpt-5.3-codex-spark": { "name": "OpenAI Codex (Backend)" },
+        "bzl/claude-sonnet-4.6": { "name": "Claude Sonnet 4.6" }
       }
     }
   },
